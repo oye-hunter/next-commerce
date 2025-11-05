@@ -309,81 +309,96 @@ export async function getCollectionProducts({
   reverse?: boolean;
   sortKey?: string;
 }): Promise<Product[]> {
-  'use cache';
-  cacheTag(TAGS.collections, TAGS.products);
-  cacheLife('days');
+  try {
+    const res = await shopifyFetch<ShopifyCollectionProductsOperation>({
+      query: getCollectionProductsQuery,
+      variables: {
+        handle: collection,
+        reverse,
+        sortKey: sortKey === 'CREATED_AT' ? 'CREATED' : sortKey
+      }
+    });
 
-  const res = await shopifyFetch<ShopifyCollectionProductsOperation>({
-    query: getCollectionProductsQuery,
-    variables: {
-      handle: collection,
-      reverse,
-      sortKey: sortKey === 'CREATED_AT' ? 'CREATED' : sortKey
+    if (!res.body.data.collection) {
+      console.log(`No collection found for \`${collection}\``);
+      return [];
     }
-  });
 
-  if (!res.body.data.collection) {
-    console.log(`No collection found for \`${collection}\``);
+    return reshapeProducts(
+      removeEdgesAndNodes(res.body.data.collection.products)
+    );
+  } catch (error) {
+    console.log(`Error fetching collection \`${collection}\`:`, error);
     return [];
   }
-
-  return reshapeProducts(
-    removeEdgesAndNodes(res.body.data.collection.products)
-  );
 }
 
 export async function getCollections(): Promise<Collection[]> {
-  'use cache';
-  cacheTag(TAGS.collections);
-  cacheLife('days');
-
-  const res = await shopifyFetch<ShopifyCollectionsOperation>({
-    query: getCollectionsQuery
-  });
-  const shopifyCollections = removeEdgesAndNodes(res.body?.data?.collections);
-  const collections = [
-    {
-      handle: '',
-      title: 'All',
-      description: 'All products',
-      seo: {
+  try {
+    const res = await shopifyFetch<ShopifyCollectionsOperation>({
+      query: getCollectionsQuery
+    });
+    const shopifyCollections = removeEdgesAndNodes(res.body?.data?.collections);
+    const collections = [
+      {
+        handle: '',
         title: 'All',
-        description: 'All products'
+        description: 'All products',
+        seo: {
+          title: 'All',
+          description: 'All products'
+        },
+        path: '/search',
+        updatedAt: new Date().toISOString()
       },
-      path: '/search',
-      updatedAt: new Date().toISOString()
-    },
-    // Filter out the `hidden` collections.
-    // Collections that start with `hidden-*` need to be hidden on the search page.
-    ...reshapeCollections(shopifyCollections).filter(
-      (collection) => !collection.handle.startsWith('hidden')
-    )
-  ];
+      // Filter out the `hidden` collections.
+      // Collections that start with `hidden-*` need to be hidden on the search page.
+      ...reshapeCollections(shopifyCollections).filter(
+        (collection) => !collection.handle.startsWith('hidden')
+      )
+    ];
 
-  return collections;
+    return collections;
+  } catch (error) {
+    console.log('Error fetching collections:', error);
+    return [
+      {
+        handle: '',
+        title: 'All',
+        description: 'All products',
+        seo: {
+          title: 'All',
+          description: 'All products'
+        },
+        path: '/search',
+        updatedAt: new Date().toISOString()
+      }
+    ];
+  }
 }
 
 export async function getMenu(handle: string): Promise<Menu[]> {
-  'use cache';
-  cacheTag(TAGS.collections);
-  cacheLife('days');
+  try {
+    const res = await shopifyFetch<ShopifyMenuOperation>({
+      query: getMenuQuery,
+      variables: {
+        handle
+      }
+    });
 
-  const res = await shopifyFetch<ShopifyMenuOperation>({
-    query: getMenuQuery,
-    variables: {
-      handle
-    }
-  });
-
-  return (
-    res.body?.data?.menu?.items.map((item: { title: string; url: string }) => ({
-      title: item.title,
-      path: item.url
-        .replace(domain, '')
-        .replace('/collections', '/search')
-        .replace('/pages', '')
-    })) || []
-  );
+    return (
+      res.body?.data?.menu?.items.map((item: { title: string; url: string }) => ({
+        title: item.title,
+        path: item.url
+          .replace(domain, '')
+          .replace('/collections', '/search')
+          .replace('/pages', '')
+      })) || []
+    );
+  } catch (error) {
+    console.log(`Error fetching menu \`${handle}\`:`, error);
+    return [];
+  }
 }
 
 export async function getPage(handle: string): Promise<Page> {
